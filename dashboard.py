@@ -2,48 +2,41 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 
-# إعداد الصفحة بأسلوب Dark Mode رياضي
-st.set_page_config(page_title="SmartScore AI", page_icon="⚽", layout="wide")
+# إعداد الصفحة
+st.set_page_config(page_title="SmartScore AI", layout="wide")
 
-# الربط بـ Supabase
-URL = "https://your-project.id.supabase.co"
-KEY = "your-anon-key"
-supabase: Client = create_client(URL, KEY)
+# دالة للتحقق من وجود الـ Secrets
+def get_supabase_client():
+    try:
+        # محاولة جلب البيانات من Secrets
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception:
+        return None
 
-@st.cache_data(ttl=300)
+supabase = get_supabase_client()
+
+if supabase is None:
+    st.error("❌ خطأ في الإعدادات: يرجى التأكد من إضافة SUPABASE_URL و SUPABASE_KEY في إعدادات Secrets على Streamlit Cloud.")
+    st.stop()
+
+@st.cache_data(ttl=600)
 def load_cloud_data():
-    response = supabase.table("matches").select("*").order("match_date", desc=False).execute()
-    return pd.DataFrame(response.data)
+    try:
+        # جلب أول 100 مباراة للتجربة
+        response = supabase.table("matches").select("*").limit(100).execute()
+        return pd.DataFrame(response.data)
+    except Exception as e:
+        st.error(f"❌ تعذر الاتصال بـ Supabase: {str(e)}")
+        return pd.DataFrame()
 
-# واجهة المستخدم
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/5323/5323773.png", width=100)
-st.sidebar.title("SmartScore AI")
-st.sidebar.info("المحرك يقوم بتحليل 1700+ مباراة حالياً")
+st.title("⚽ SmartScore AI - لوحة التحكم السحابية")
 
 df = load_cloud_data()
 
 if not df.empty:
-    # فلترة حسب الدوري
-    league = st.sidebar.selectbox("اختر الدوري", ["الكل"] + list(df['league'].unique()))
-    display_df = df if league == "الكل" else df[df['league'] == league]
-
-    st.title(f"📊 توقعات مباريات {league}")
-
-    # عرض المباريات في كروت (Cards)
-    for _, row in display_df.head(20).iterrows(): # عرض أول 20 مباراة حالياً
-        with st.expander(f"⚽ {row['home_team']} vs {row['away_team']}"):
-            c1, c2, c3 = st.columns([1, 1, 1])
-            with c1:
-                st.write(f"🏠 **{row['home_team']}**")
-                st.progress(0.65) # نسبة افتراضية سيتم ربطها بالمعادلة لاحقاً
-            with c2:
-                st.markdown("<h3 style='text-align: center;'>VS</h3>", unsafe_allow_html=True)
-                st.caption(f"📅 {row['status']}")
-            with c3:
-                st.write(f"🚀 **{row['away_team']}**")
-                st.progress(0.35)
-            
-            st.success(f"🎯 التوقع الأكثر احتمالاً: فوز {row['home_team']} (2-1)")
-
+    st.success(f"📈 تم تحميل {len(df)} مباراة بنجاح من السحابة!")
+    st.dataframe(df)
 else:
-    st.warning("🔄 البيانات قيد الرفع من جهاز Vostro... يرجى الانتظار")
+    st.info("🔄 في انتظار البيانات... تأكد من رفع المباريات من جهازك الـ Vostro.")
